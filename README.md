@@ -7,7 +7,7 @@ An IoT-based plant wellness monitoring system using ESP32 and MQTT to monitor te
 Plant health depends on suitable temperature, humidity, light and soil moisture. These conditions can change continuously and may not be noticed by the user. This project provides continuous monitoring and converts sensor readings into meaningful plant-health information.
 
 ## 3. Approach
-The ESP32 reads the DHT22, LDR module and potentiometer. Each value is compared with its threshold and classified as GOOD or unsuitable. The results are combined into an overall `HEALTHY` or `NEEDS_ATTENTION` status. A custom multi-parameter condition is also checked, and all information is transmitted through MQTT.
+The ESP32 reads the DHT22, LDR module and potentiometer. Each value is compared with its threshold and classified as GOOD or unsuitable. The results are combined into an overall `HEALTHY` or `NEEDS_ATTENTION` status. A custom multi-parameter condition and soil-moisture trend are also checked, and the information is transmitted through MQTT.
 
 ## 4. Components and Pin Connections
 
@@ -76,19 +76,21 @@ Therefore:
 
 The code uses `1234` and `2404` as the practical ADC thresholds. The lux values were used to vary the simulated light level, while the threshold comparison is performed using the LDR's ADC output.
 
-## 6. Custom Condition and Overall Plant Status
+## 6. Custom Condition, Trend Analysis and Overall Plant Status
 
-The system includes a custom condition:
+The system includes a custom multi-parameter condition:
 
-`Soil Moisture < 30% AND Humidity ≥ 40%`
+`Soil Moisture < 30% AND Humidity > 70%`
 
-This identifies dry soil despite adequate air humidity and produces:
+This identifies a moisture imbalance where the soil is dry despite humid surrounding air. Instead of immediately recommending watering, the system reports:
 
-`DRY_SOIL_ADEQUATE_HUMIDITY`
+`MOISTURE IMBALANCE DETECTED`
 
-`Action: WATER_PLANT`
+`Action: Check soil/root condition`
 
-The overall status starts as `HEALTHY` and changes to `NEEDS_ATTENTION` if any monitored parameter is outside its acceptable range. This gives the user one clear plant-level result instead of interpreting every reading separately.
+The system also compares the current soil-moisture value with the previous reading. If soil moisture changes from below 30% to 30% or above, the system reports `PLANT CONDITION: IMPROVING`. If it changes from 30% or above to below 30%, it reports `PLANT CONDITION: DETERIORATING`.
+
+The overall status starts as `HEALTHY` and changes to `NEEDS_ATTENTION` if any monitored parameter is outside its acceptable range or the custom moisture-imbalance condition is detected.
 
 ## 7. MQTT Communication
 
@@ -106,7 +108,7 @@ Example messages:
 
 `{"status":"NEEDS_ATTENTION"}`
 
-`{"alert":"DRY_SOIL_ADEQUATE_HUMIDITY","action":"WATER_PLANT"}`
+`{"alert":"MOISTURE_IMBALANCE","action":"CHECK_SOIL_ROOT_CONDITION"}`
 
 Separate topics keep sensor data, status and alerts organized.
 
@@ -122,7 +124,7 @@ During simulation:
 | Soil Moisture | 0 % | DRY |
 | Overall Status | — | NEEDS_ATTENTION |
 
-The system correctly identified dry soil and excessive light, generated the required actions and triggered the custom dry-soil/adequate-humidity alert. MQTT messages were successfully published.
+The system correctly identified dry soil and excessive light, generated the required actions and successfully published sensor and status information through MQTT. The custom moisture-imbalance condition and soil-moisture trend analysis were also implemented and tested.
 
 ## 9. Circuit and Output Screenshots
 
@@ -148,4 +150,4 @@ The system correctly identified dry soil and excessive light, generated the requ
 
 ## 12. Conclusion
 
-The project demonstrates an ESP32-based IoT system that interprets environmental conditions rather than simply displaying sensor readings. It uses defined thresholds, produces an overall plant status, detects a custom multi-parameter condition and communicates the results through MQTT. The system can be extended into an automated plant-care solution using physical sensors and actuators.
+The project demonstrates an ESP32-based IoT system that interprets environmental conditions rather than simply displaying sensor readings. It uses defined thresholds, produces an overall plant status, detects a custom multi-parameter moisture condition, analyses soil-moisture trends and communicates the results through MQTT. The system can be extended into an automated plant-care solution using physical sensors and actuators.
