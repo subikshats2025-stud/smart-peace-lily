@@ -36,8 +36,9 @@ PubSubClient mqttClient(espClient);
 unsigned long lastPublish = 0;
 const unsigned long PUBLISH_INTERVAL = 5000;
 
-void connectWiFi() {
+int previousSoilPercent = -1;
 
+void connectWiFi() {
   Serial.println();
   Serial.print("Connecting to WiFi");
 
@@ -50,56 +51,44 @@ void connectWiFi() {
 
   Serial.println();
   Serial.println("WiFi connected!");
-
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
 void connectMQTT() {
-
   while (!mqttClient.connected()) {
-
     Serial.print("Connecting to MQTT...");
 
     String clientID = "PeaceLilyESP32-";
     clientID += String(random(0xffff), HEX);
 
     if (mqttClient.connect(clientID.c_str())) {
-
       Serial.println("connected!");
-
     } else {
-
       Serial.print("failed, state = ");
       Serial.println(mqttClient.state());
-
       delay(3000);
     }
   }
 }
 
 void setup() {
-
   Serial.begin(115200);
-
   delay(1000);
 
-  Serial.println();
-  Serial.println("================================");
-  Serial.println("   PEACE LILY SMART MONITOR");
-  Serial.println("================================");
+  Serial.println("========================================");
+  Serial.println("     PEACE LILY SMART MONITOR");
+  Serial.println("========================================");
 
   dhtSensor.setup(DHT_PIN, DHTesp::DHT22);
 
   connectWiFi();
 
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
-
   connectMQTT();
 }
 
 void loop() {
-
   if (!mqttClient.connected()) {
     connectMQTT();
   }
@@ -107,18 +96,14 @@ void loop() {
   mqttClient.loop();
 
   if (millis() - lastPublish >= PUBLISH_INTERVAL) {
-
     lastPublish = millis();
 
-    TempAndHumidity data =
-      dhtSensor.getTempAndHumidity();
+    TempAndHumidity data = dhtSensor.getTempAndHumidity();
 
     int lightValue = analogRead(LDR_PIN);
-
     int soilValue = analogRead(SOIL_PIN);
 
-    int soilPercent =
-      map(soilValue, 0, 4095, 0, 100);
+    int soilPercent = map(soilValue, 0, 4095, 0, 100);
 
     bool temperatureOK =
       data.temperature >= TEMP_MIN &&
@@ -133,144 +118,165 @@ void loop() {
       soilPercent <= SOIL_MAX;
 
     bool lightOK =
-      lightValue <= LIGHT_DARK &&
-      lightValue >= LIGHT_BRIGHT;
+      lightValue >= LIGHT_BRIGHT &&
+      lightValue <= LIGHT_DARK;
+
+    String temperatureStatus;
+    String humidityStatus;
+    String soilStatus;
+    String lightStatus;
+
+    if (temperatureOK) {
+      temperatureStatus = "GOOD";
+    } else if (data.temperature < TEMP_MIN) {
+      temperatureStatus = "TOO LOW";
+    } else {
+      temperatureStatus = "TOO HIGH";
+    }
+
+    if (humidityOK) {
+      humidityStatus = "GOOD";
+    } else if (data.humidity < HUMIDITY_MIN) {
+      humidityStatus = "TOO LOW";
+    } else {
+      humidityStatus = "TOO HIGH";
+    }
+
+    if (soilOK) {
+      soilStatus = "GOOD";
+    } else if (soilPercent < SOIL_MIN) {
+      soilStatus = "DRY";
+    } else {
+      soilStatus = "TOO WET";
+    }
+
+    if (lightOK) {
+      lightStatus = "GOOD";
+    } else if (lightValue < LIGHT_BRIGHT) {
+      lightStatus = "TOO BRIGHT";
+    } else {
+      lightStatus = "TOO DARK";
+    }
+
+    bool moistureImbalance =
+      soilPercent < SOIL_MIN &&
+      data.humidity > HUMIDITY_MAX;
+
+    bool soilImproving = false;
+    bool soilDeteriorating = false;
+
+    if (previousSoilPercent >= 0) {
+      if (previousSoilPercent < SOIL_MIN &&
+          soilPercent >= SOIL_MIN) {
+        soilImproving = true;
+      }
+
+      if (previousSoilPercent >= SOIL_MIN &&
+          soilPercent < SOIL_MIN) {
+        soilDeteriorating = true;
+      }
+    }
 
     String overallStatus = "HEALTHY";
 
+    if (!temperatureOK ||
+        !humidityOK ||
+        !soilOK ||
+        !lightOK ||
+        moistureImbalance) {
+      overallStatus = "NEEDS ATTENTION";
+    }
+
     Serial.println();
-    Serial.println("===== PEACE LILY =====");
+    Serial.println("========== PEACE LILY STATUS ==========");
 
-    Serial.print("Temperature: ");
-    Serial.print(data.temperature);
-    Serial.println(" °C");
+    Serial.print("Temperature   : ");
+    Serial.print(data.temperature, 1);
+    Serial.print(" °C   [");
+    Serial.print(temperatureStatus);
+    Serial.println("]");
 
-    Serial.print("Humidity: ");
-    Serial.print(data.humidity);
-    Serial.println(" %");
+    Serial.print("Humidity      : ");
+    Serial.print(data.humidity, 1);
+    Serial.print(" %    [");
+    Serial.print(humidityStatus);
+    Serial.println("]");
 
-    Serial.print("Light ADC: ");
-    Serial.println(lightValue);
-
-    Serial.print("Soil Moisture: ");
+    Serial.print("Soil Moisture : ");
     Serial.print(soilPercent);
-    Serial.println(" %");
+    Serial.print(" %       [");
+    Serial.print(soilStatus);
+    Serial.println("]");
 
-    if (!temperatureOK) {
+    Serial.print("Light         : ");
+    Serial.print(lightValue);
+    Serial.print("      [");
+    Serial.print(lightStatus);
+    Serial.println("]");
 
-      overallStatus = "NEEDS_ATTENTION";
+    Serial.println("----------------------------------------");
 
-      if (data.temperature < TEMP_MIN) {
-        Serial.println("Temperature: TOO LOW");
+    Serial.print("PLANT STATUS : ");
+    Serial.println(overallStatus);
+
+    if (soilPercent < SOIL_MIN) {
+      Serial.println("RECOMMENDATION: Check soil moisture");
+    } else if (soilPercent > SOIL_MAX) {
+      Serial.println("RECOMMENDATION: Avoid overwatering");
+    } else if (!lightOK) {
+      if (lightValue < LIGHT_BRIGHT) {
+        Serial.println("RECOMMENDATION: Move plant to indirect light");
       } else {
-        Serial.println("Temperature: TOO HIGH");
+        Serial.println("RECOMMENDATION: Move plant away from strong light");
       }
-
-    } else {
-
-      Serial.println("Temperature: GOOD");
     }
 
-    if (!humidityOK) {
-
-      overallStatus = "NEEDS_ATTENTION";
-
-      if (data.humidity < HUMIDITY_MIN) {
-        Serial.println("Humidity: TOO LOW");
-      } else {
-        Serial.println("Humidity: TOO HIGH");
-      }
-
-    } else {
-
-      Serial.println("Humidity: GOOD");
-    }
-
-    if (!soilOK) {
-
-      overallStatus = "NEEDS_ATTENTION";
-
-      if (soilPercent < SOIL_MIN) {
-
-        Serial.println("Soil: DRY");
-        Serial.println("Action: Water the Peace Lily");
-
-      } else {
-
-        Serial.println("Soil: TOO WET");
-        Serial.println("Action: Avoid overwatering");
-      }
-
-    } else {
-
-      Serial.println("Soil: GOOD");
-    }
-
-    if (!lightOK) {
-
-      overallStatus = "NEEDS_ATTENTION";
-
-      if (lightValue > LIGHT_DARK) {
-
-        Serial.println("Light: TOO DARK");
-        Serial.println(
-          "Action: Move plant to brighter indirect light"
-        );
-
-      } else {
-
-        Serial.println("Light: TOO BRIGHT");
-        Serial.println(
-          "Action: Move plant away from strong light"
-        );
-      }
-
-    } else {
-
-      Serial.println("Light: GOOD");
-    }
+    Serial.println("----------------------------------------");
 
     bool customAlert = false;
 
-    if (soilPercent < SOIL_MIN &&
-        data.humidity >= HUMIDITY_MIN) {
-
+    if (moistureImbalance) {
       customAlert = true;
-      overallStatus = "NEEDS_ATTENTION";
 
-      Serial.println();
-      Serial.println("CUSTOM ALERT!");
-
-      Serial.println(
-        "Soil is dry despite adequate air humidity."
-      );
-
-      Serial.println(
-        "Action: Water the Peace Lily."
-      );
+      Serial.println("CUSTOM CONDITION DETECTED");
+      Serial.println("Moisture imbalance detected");
+      Serial.println("Dry soil despite humid air");
+      Serial.println("ACTION: Check soil/root condition");
+      Serial.println("----------------------------------------");
     }
 
-    Serial.println();
+    if (soilImproving) {
+      Serial.println("TREND ANALYSIS");
+      Serial.print("Soil Moisture: ");
+      Serial.print(previousSoilPercent);
+      Serial.print("% -> ");
+      Serial.print(soilPercent);
+      Serial.println("%");
+      Serial.println("PLANT CONDITION: IMPROVING");
+      Serial.println("----------------------------------------");
+    }
 
-    Serial.print("PLANT STATUS: ");
-    Serial.println(overallStatus);
-
-    Serial.println("======================");
+    if (soilDeteriorating) {
+      Serial.println("TREND ANALYSIS");
+      Serial.print("Soil Moisture: ");
+      Serial.print(previousSoilPercent);
+      Serial.print("% -> ");
+      Serial.print(soilPercent);
+      Serial.println("%");
+      Serial.println("PLANT CONDITION: DETERIORATING");
+      Serial.println("ACTION: Check watering conditions");
+      Serial.println("----------------------------------------");
+    }
 
     String sensorMessage = "{";
-
     sensorMessage += "\"temperature\":";
     sensorMessage += String(data.temperature, 1);
-
     sensorMessage += ",\"humidity\":";
     sensorMessage += String(data.humidity, 1);
-
     sensorMessage += ",\"light_adc\":";
     sensorMessage += String(lightValue);
-
     sensorMessage += ",\"soil_moisture\":";
     sensorMessage += String(soilPercent);
-
     sensorMessage += "}";
 
     mqttClient.publish(
@@ -286,24 +292,31 @@ void loop() {
       statusMessage.c_str()
     );
 
-    if (customAlert) {
+    Serial.println("MQTT");
+    Serial.print("Data published");
 
+    if (customAlert) {
       String alertMessage =
-        "{\"alert\":\"DRY_SOIL_ADEQUATE_HUMIDITY\","
-        "\"action\":\"WATER_PLANT\"}";
+        "{\"alert\":\"MOISTURE_IMBALANCE\","
+        "\"action\":\"CHECK_SOIL_ROOT_CONDITION\"}";
 
       mqttClient.publish(
         MQTT_ALERT_TOPIC,
         alertMessage.c_str()
       );
 
-      Serial.println(
-        "MQTT: Custom alert published!"
-      );
+      Serial.println(" + alert");
+      Serial.println();
+      Serial.println("MQTT: Sensor data published!");
+      Serial.println("MQTT: Custom alert published!");
+    } else {
+      Serial.println();
+      Serial.println();
+      Serial.println("MQTT: Sensor data published!");
     }
 
-    Serial.println(
-      "MQTT: Sensor data published!"
-    );
+    Serial.println("========================================");
+
+    previousSoilPercent = soilPercent;
   }
 }
