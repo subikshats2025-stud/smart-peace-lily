@@ -76,21 +76,15 @@ Therefore:
 
 The code uses `1234` and `2404` as the practical ADC thresholds. The lux values were used to vary the simulated light level, while the threshold comparison is performed using the LDR's ADC output.
 
-## 6. Custom Condition, Trend Analysis and Overall Plant Status
+## 6. Custom Conditions, Trend Analysis and Overall Plant Status
 
-The system includes a custom multi-parameter condition:
+The system uses multi-parameter conditions to provide more meaningful plant-care decisions.
 
-`Soil Moisture < 30% AND Humidity > 70%`
+- **Weather-Adapting Moisture:** When soil moisture is below 30% and humidity is 40–70%, the system reports `WEATHER-ADAPTING MOISTURE` and recommends watering while monitoring the moisture response.
+- **Possible Root Issue:** When soil moisture is below 30% while humidity is above 70%, the system reports `POSSIBLE ROOT ISSUE` and recommends checking the root condition before watering further.
+- **Trend Detection:** The system compares the current reading with the previous reading and reports `HUMIDITY IMPROVING` or `SOIL MOISTURE IMPROVING` when the corresponding value increases significantly.
 
-This identifies a moisture imbalance where the soil is dry despite humid surrounding air. Instead of immediately recommending watering, the system reports:
-
-`MOISTURE IMBALANCE DETECTED`
-
-`Action: Check soil/root condition`
-
-The system also compares the current soil-moisture value with the previous reading. If soil moisture changes from below 30% to 30% or above, the system reports `PLANT CONDITION: IMPROVING`. If it changes from 30% or above to below 30%, it reports `PLANT CONDITION: DETERIORATING`.
-
-The overall status starts as `HEALTHY` and changes to `NEEDS_ATTENTION` if any monitored parameter is outside its acceptable range or the custom moisture-imbalance condition is detected.
+The overall status is `HEALTHY` when all parameters are within their ranges and changes to `NEEDS_ATTENTION` when any parameter is outside its acceptable range.
 
 ## 7. MQTT Communication
 
@@ -124,8 +118,7 @@ During simulation:
 | Soil Moisture | 0 % | DRY |
 | Overall Status | — | NEEDS_ATTENTION |
 
-The system correctly identified dry soil and excessive light, generated the required actions and successfully published sensor and status information through MQTT. The custom moisture-imbalance condition and soil-moisture trend analysis were also implemented and tested.
-
+The system identified dry soil and excessive light, generated appropriate recommendations and successfully published sensor and status information through MQTT. The custom moisture conditions and improvement detection were also tested.
 ## 9. Circuit and Output Screenshots
 
 ![Circuit Layout](circuit.png)
